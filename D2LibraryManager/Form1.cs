@@ -70,28 +70,54 @@ namespace D2LibraryManager
                 addonName = addonList.First();
             }
             comboBox1.Text = addonName;
-            string libs_dir = @"Libs";
+            string libs_dir = @"libs_data\libs_data-main";
             if (Directory.Exists(libs_dir))
             {
-                List<string> libs_list = Directory.GetDirectories(libs_dir).ToList();
-                for (int i = 0; i < libs_list.Count; i++)
+                if (File.Exists(libs_dir + "\\version.txt"))
                 {
-                    if (File.Exists(libs_list[i] + "\\data.json"))
+                    string nowversion = File.ReadAllText(libs_dir + "\\version.txt");
+                    string webversion;
+                    HttpWebRequest myHttwebrequest = (HttpWebRequest)HttpWebRequest.Create("https://raw.githubusercontent.com/Niker323/libs_data/main/version.txt");
+                    HttpWebResponse myHttpWebresponse = (HttpWebResponse)myHttwebrequest.GetResponse();
+                    StreamReader strm = new StreamReader(myHttpWebresponse.GetResponseStream());
+                    webversion = strm.ReadToEnd();
+
+                    if (nowversion != webversion)
                     {
-                        string lib_json = File.ReadAllText(libs_list[i] + "\\data.json");
-                        JObject jObject = JObject.Parse(lib_json);
-                        libList.Add(jObject.ToObject<LibData>());
+                        DialogResult result = MessageBox.Show(
+                            "Libs data version does not match\nInstalled version: " + nowversion + "\nLast version: " + webversion + "\nUpdate libs data?",
+                            "", MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Warning, MessageBoxDefaultButton.Button1
+                        );
+
+                        if (result == DialogResult.Yes)
+                        {
+                            Directory.Delete("libs_data", true);
+                            UpdateLibsData();
+                        }
                     }
-                    if (File.Exists(libs_list[i] + "\\description.html"))
-                    {
-                        libList.Last().description = File.ReadAllText(libs_list[i] + "\\description.html");
-                    }
-                    if (File.Exists(libs_list[i] + "\\install.txt"))
-                    {
-                        libList.Last().install = File.ReadLines(libs_list[i] + "\\install.txt").ToArray();
-                    }
-                    libList.Last().path = libs_list[i];
                 }
+                else
+                {
+                    DialogResult result = MessageBox.Show(
+                        "Libs data version file not found\nUpdate libs data?",
+                        "", MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning, MessageBoxDefaultButton.Button1
+                    );
+
+                    if (result == DialogResult.Yes)
+                    {
+                        Directory.Delete("libs_data", true);
+                        UpdateLibsData();
+                    }
+
+                }
+
+                LoadLibsData(libs_dir);
+            }
+            else
+            {
+                UpdateLibsData();
             }
             for (int i = 0; i < libList.Count; i++)
             {
@@ -103,6 +129,41 @@ namespace D2LibraryManager
             if (File.Exists(@"blank.html"))
             {
                 discr_blank = File.ReadAllText(@"blank.html");
+            }
+            else
+            {
+                MessageBox.Show("blank.html not found!");
+            }
+            UpdateNodes(treeView1.Nodes);
+        }
+
+        private void UpdateLibsData()
+        {
+            new WebClient().DownloadFile("https://github.com/Niker323/libs_data/archive/refs/heads/main.zip", "libs_data.zip");
+            ZipFile.ExtractToDirectory("libs_data.zip", "libs_data");
+            if (File.Exists("libs_data.zip")) File.Delete("libs_data.zip");
+        }
+
+        private void LoadLibsData(string libs_dir)
+        {
+            List<string> libs_list = Directory.GetDirectories(libs_dir).ToList();
+            for (int i = 0; i < libs_list.Count; i++)
+            {
+                if (File.Exists(libs_list[i] + "\\data.json"))
+                {
+                    string lib_json = File.ReadAllText(libs_list[i] + "\\data.json");
+                    JObject jObject = JObject.Parse(lib_json);
+                    libList.Add(jObject.ToObject<LibData>());
+                }
+                if (File.Exists(libs_list[i] + "\\description.html"))
+                {
+                    libList.Last().description = File.ReadAllText(libs_list[i] + "\\description.html");
+                }
+                if (File.Exists(libs_list[i] + "\\install.txt"))
+                {
+                    libList.Last().install = File.ReadLines(libs_list[i] + "\\install.txt").ToArray();
+                }
+                libList.Last().path = libs_list[i];
             }
         }
 
@@ -139,12 +200,13 @@ namespace D2LibraryManager
 
         private void treeView1_AfterSelect(object sender, TreeViewEventArgs e)
         {
-            UpdateNode(treeView1.SelectedNode);
+            SelectNode(treeView1.SelectedNode);
         }
 
-        private void UpdateNode(TreeNode node)
+        private void SelectNode(TreeNode node)
         {
-            LibData selectedLibData = (LibData)node.Tag;
+            UpdateNode(treeView1.SelectedNode);
+            LibData selectedLibData = (LibData)treeView1.SelectedNode.Tag;
             string ready_discr = discr_blank.Replace("{name}", selectedLibData.name);
             ready_discr = ready_discr.Replace("{source}", selectedLibData.source);
             ready_discr = ready_discr.Replace("{description}", selectedLibData.description);
@@ -154,15 +216,29 @@ namespace D2LibraryManager
             {
                 if (IsInstalled(selectedLibData))
                 {
-                    treeView1.SelectedNode.ForeColor = Color.LightGreen;
                     ToolStripItem button = menuStrip1.Items.Add("Uninstall");
                     button.Click += OnUninstall;
                 }
                 else
                 {
-                    treeView1.SelectedNode.ForeColor = Color.White;
                     ToolStripItem button = menuStrip1.Items.Add("Install");
                     button.Click += OnInstall;
+                }
+            }
+        }
+
+        private void UpdateNode(TreeNode node)
+        {
+            LibData selectedLibData = (LibData)node.Tag;
+            if (selectedLibData.install != null)
+            {
+                if (IsInstalled(selectedLibData))
+                {
+                    node.ForeColor = Color.LightGreen;
+                }
+                else
+                {
+                    node.ForeColor = Color.White;
                 }
             }
         }
@@ -174,7 +250,65 @@ namespace D2LibraryManager
             {
                 if (Directory.Exists("library")) Directory.Delete("library", true);
                 if (File.Exists("library.zip")) File.Delete("library.zip");
-                new WebClient().DownloadFile(selectedLibData.link, "library.zip");
+
+                //ToolStripProgressBar progress = new ToolStripProgressBar();
+                //progress.Name = "progress";
+                //progress.Minimum = 0;
+                //progress.Maximum = 100;
+                //menuStrip1.Items.Add(progress);
+                ToolStripLabel label = new ToolStripLabel();
+                label.Name = "progress_label";
+                menuStrip1.Items.Add(label);
+
+                WebClient client = new WebClient();
+                client.DownloadProgressChanged += new DownloadProgressChangedEventHandler(client_DownloadProgressChanged);
+                client.DownloadFileCompleted += new AsyncCompletedEventHandler(client_DownloadFileCompleted);
+                client.DownloadFileAsync(new Uri(selectedLibData.link), "library.zip");
+
+                //new WebClient().DownloadFileAsync(new Uri(selectedLibData.link), "library.zip");
+                //ZipFile.ExtractToDirectory("library.zip", "library");
+                //for (int i = 0; i < selectedLibData.install.Length; i++)
+                //{
+                //    DoLine(selectedLibData.install[i], false);
+                //}
+                //if (Directory.Exists("library")) Directory.Delete("library", true);
+                //if (File.Exists("library.zip")) File.Delete("library.zip");
+                //UpdateNode(treeView1.SelectedNode);
+            }
+            else
+            {
+                MessageBox.Show("Install error:" + Environment.NewLine + "Link not found");
+            }
+        }
+
+        void client_DownloadProgressChanged(object sender, DownloadProgressChangedEventArgs e)
+        {
+            ToolStripLabel label = (ToolStripLabel)menuStrip1.Items.Find("progress_label", false)[0];
+            if (label != null)
+            {
+                label.Text = "Downloaded " + e.BytesReceived + " of " + e.TotalBytesToReceive;
+            }
+            //ToolStripProgressBar progress = (ToolStripProgressBar)menuStrip1.Items.Find("progress", false)[0];
+            //if (progress != null)
+            //{
+            //    progress.Value = e.ProgressPercentage;
+            //}
+        }
+
+        void client_DownloadFileCompleted(object sender, AsyncCompletedEventArgs e)
+        {
+            if (e.Cancelled)
+            {
+                MessageBox.Show("Install error:" + Environment.NewLine + e.Error.Message);
+            }
+            else
+            {
+                //ToolStripProgressBar progress = (ToolStripProgressBar)menuStrip1.Items.Find("progress", false)[0];
+                //if (progress != null)
+                //{
+                //    progress.Value = 100;
+                //}
+                LibData selectedLibData = (LibData)treeView1.SelectedNode.Tag;//need fix
                 ZipFile.ExtractToDirectory("library.zip", "library");
                 for (int i = 0; i < selectedLibData.install.Length; i++)
                 {
@@ -183,10 +317,7 @@ namespace D2LibraryManager
                 if (Directory.Exists("library")) Directory.Delete("library", true);
                 if (File.Exists("library.zip")) File.Delete("library.zip");
                 UpdateNode(treeView1.SelectedNode);
-            }
-            else
-            {
-                MessageBox.Show("Install error:" + Environment.NewLine + "Link not found");
+                SelectNode(treeView1.SelectedNode);
             }
         }
 
@@ -199,7 +330,7 @@ namespace D2LibraryManager
                 {
                     DoLine(selectedLibData.install[i], true);
                 }
-                UpdateNode(treeView1.SelectedNode);
+                SelectNode(treeView1.SelectedNode);
             }
         }
 
@@ -214,7 +345,11 @@ namespace D2LibraryManager
                     {
                         File.WriteAllText(FormPath(args[1]), File.ReadAllText(FormPath(args[1])).Replace(args[2] + Environment.NewLine, ""));
                     }
-                    else if(args[0] == "copy")
+                    else if (args[0] == "addlineafter")
+                    {
+                        File.WriteAllText(FormPath(args[1]), File.ReadAllText(FormPath(args[1])).Replace(args[3], ""));
+                    }
+                    else if (args[0] == "copy")
                     {
                         File.Delete(FormPath(args[2]));
                     }
@@ -224,6 +359,22 @@ namespace D2LibraryManager
                     if (args[0] == "addline")
                     {
                         File.WriteAllText(FormPath(args[1]), args[2] + Environment.NewLine + File.ReadAllText(FormPath(args[1])));
+                    }
+                    else if (args[0] == "addlineafter")
+                    {
+                        string file = File.ReadAllText(FormPath(args[1]));
+                        if (file.IndexOf(args[2]) == -1)
+                        {
+                            if (str.IndexOf("@else@") != -1)
+                            {
+                                Debug.WriteLine(str.Substring(str.IndexOf("@else@") + 6));
+                                DoLine(str.Substring(str.IndexOf("@else@") + 6), reverse);
+                            }
+                        }
+                        else
+                        {
+                            File.WriteAllText(FormPath(args[1]), file.Replace(args[2], args[2] + Environment.NewLine + args[3]));
+                        }
                     }
                     else if (args[0] == "copy")
                     {
