@@ -11,11 +11,12 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace D2LibraryManager
+namespace D2LibrariesManager
 {
     public partial class Form1 : Form
     {
@@ -41,9 +42,21 @@ namespace D2LibraryManager
 
         string discr_blank = "";
 
+        TreeNode memNode;
+
         public Form1()
         {
             InitializeComponent();
+
+            Ping p = new Ping();
+            PingReply pr = p.Send(@"github.com");
+            IPStatus status = pr.Status;
+            if (status != IPStatus.Success)
+            {
+                MessageBox.Show("GitHub is unavailable!");
+                Environment.Exit(0);
+            }
+
             string keypath = @"Software\Valve\Steam";
             RegistryKey key = Registry.CurrentUser.OpenSubKey(keypath);
             steamPath = key.GetValue("SteamPath").ToString();
@@ -137,8 +150,15 @@ namespace D2LibraryManager
             UpdateNodes(treeView1.Nodes);
         }
 
+        private void WriteToLog(string str)
+        {
+            richTextBox1.AppendText(str + Environment.NewLine);
+            richTextBox1.ScrollToCaret();
+        }
+
         private void UpdateLibsData()
         {
+            WriteToLog("Update LibsData");
             new WebClient().DownloadFile("https://github.com/Niker323/libs_data/archive/refs/heads/main.zip", "libs_data.zip");
             ZipFile.ExtractToDirectory("libs_data.zip", "libs_data");
             if (File.Exists("libs_data.zip")) File.Delete("libs_data.zip");
@@ -216,14 +236,24 @@ namespace D2LibraryManager
             {
                 if (IsInstalled(selectedLibData))
                 {
-                    ToolStripItem button = menuStrip1.Items.Add("Uninstall");
+                    ToolStripButton button = new ToolStripButton("Uninstall");
                     button.Click += OnUninstall;
+                    if (memNode == treeView1.SelectedNode) button.Enabled = false;
+                    menuStrip1.Items.Add(button);
                 }
                 else
                 {
-                    ToolStripItem button = menuStrip1.Items.Add("Install");
+                    ToolStripButton button = new ToolStripButton("Install");
                     button.Click += OnInstall;
+                    if (memNode == treeView1.SelectedNode) button.Enabled = false;
+                    menuStrip1.Items.Add(button);
                 }
+            }
+            if (memNode == treeView1.SelectedNode)
+            {
+                ToolStripLabel label = new ToolStripLabel();
+                label.Name = "progress_label";
+                menuStrip1.Items.Add(label);
             }
         }
 
@@ -246,10 +276,15 @@ namespace D2LibraryManager
         private void OnInstall(object sender, EventArgs e)
         {
             LibData selectedLibData = (LibData)treeView1.SelectedNode.Tag;
+            WriteToLog("Install " + selectedLibData.name + "...");
             if (selectedLibData.link != null && selectedLibData.install != null)
             {
+                if (memNode != null) return;
                 if (Directory.Exists("library")) Directory.Delete("library", true);
                 if (File.Exists("library.zip")) File.Delete("library.zip");
+
+                memNode = treeView1.SelectedNode;
+                ((ToolStripButton)sender).Enabled = false;
 
                 //ToolStripProgressBar progress = new ToolStripProgressBar();
                 //progress.Name = "progress";
@@ -260,6 +295,7 @@ namespace D2LibraryManager
                 label.Name = "progress_label";
                 menuStrip1.Items.Add(label);
 
+                WriteToLog("Downloading...");
                 WebClient client = new WebClient();
                 client.DownloadProgressChanged += new DownloadProgressChangedEventHandler(client_DownloadProgressChanged);
                 client.DownloadFileCompleted += new AsyncCompletedEventHandler(client_DownloadFileCompleted);
@@ -277,16 +313,17 @@ namespace D2LibraryManager
             }
             else
             {
+                WriteToLog("Install error: Link not found");
                 MessageBox.Show("Install error:" + Environment.NewLine + "Link not found");
             }
         }
 
         void client_DownloadProgressChanged(object sender, DownloadProgressChangedEventArgs e)
         {
-            ToolStripLabel label = (ToolStripLabel)menuStrip1.Items.Find("progress_label", false)[0];
-            if (label != null)
+            ToolStripItem[] labels = menuStrip1.Items.Find("progress_label", false);
+            if (labels.Length > 0)
             {
-                label.Text = "Downloaded " + e.BytesReceived + " of " + e.TotalBytesToReceive;
+                ((ToolStripLabel)labels[0]).Text = "Downloaded " + e.BytesReceived + " of " + e.TotalBytesToReceive;
             }
             //ToolStripProgressBar progress = (ToolStripProgressBar)menuStrip1.Items.Find("progress", false)[0];
             //if (progress != null)
@@ -299,6 +336,7 @@ namespace D2LibraryManager
         {
             if (e.Cancelled)
             {
+                WriteToLog("Download error: " + e.Error.Message);
                 MessageBox.Show("Install error:" + Environment.NewLine + e.Error.Message);
             }
             else
@@ -308,7 +346,8 @@ namespace D2LibraryManager
                 //{
                 //    progress.Value = 100;
                 //}
-                LibData selectedLibData = (LibData)treeView1.SelectedNode.Tag;//need fix
+                WriteToLog("Download Completed");
+                LibData selectedLibData = (LibData)memNode.Tag;
                 ZipFile.ExtractToDirectory("library.zip", "library");
                 for (int i = 0; i < selectedLibData.install.Length; i++)
                 {
@@ -316,14 +355,16 @@ namespace D2LibraryManager
                 }
                 if (Directory.Exists("library")) Directory.Delete("library", true);
                 if (File.Exists("library.zip")) File.Delete("library.zip");
-                UpdateNode(treeView1.SelectedNode);
-                SelectNode(treeView1.SelectedNode);
             }
+            memNode = null;
+            UpdateNode(treeView1.SelectedNode);
+            SelectNode(treeView1.SelectedNode);
         }
 
         private void OnUninstall(object sender, EventArgs e)
         {
             LibData selectedLibData = (LibData)treeView1.SelectedNode.Tag;
+            WriteToLog("Uninstall " + selectedLibData.name + "...");
             if (selectedLibData.install != null)
             {
                 for (int i = 0; i < selectedLibData.install.Length; i++)
@@ -343,14 +384,17 @@ namespace D2LibraryManager
                 {
                     if (args[0] == "addline")
                     {
+                        WriteToLog("Remove " + args[2] + " from " + FormPath(args[1]));
                         File.WriteAllText(FormPath(args[1]), File.ReadAllText(FormPath(args[1])).Replace(args[2] + Environment.NewLine, ""));
                     }
                     else if (args[0] == "addlineafter")
                     {
+                        WriteToLog("Remove " + args[3] + " from " + FormPath(args[1]));
                         File.WriteAllText(FormPath(args[1]), File.ReadAllText(FormPath(args[1])).Replace(args[3], ""));
                     }
                     else if (args[0] == "copy")
                     {
+                        WriteToLog("Deleting " + FormPath(args[2]));
                         File.Delete(FormPath(args[2]));
                     }
                 }
@@ -358,16 +402,18 @@ namespace D2LibraryManager
                 {
                     if (args[0] == "addline")
                     {
+                        WriteToLog("Adding " + args[2] + " to " + FormPath(args[1]));
                         File.WriteAllText(FormPath(args[1]), args[2] + Environment.NewLine + File.ReadAllText(FormPath(args[1])));
                     }
                     else if (args[0] == "addlineafter")
                     {
+                        WriteToLog("Adding " + args[3] + " to " + FormPath(args[1]) + " after " + args[2]);
                         string file = File.ReadAllText(FormPath(args[1]));
                         if (file.IndexOf(args[2]) == -1)
                         {
+                            WriteToLog(args[2] + " not found");
                             if (str.IndexOf("@else@") != -1)
                             {
-                                Debug.WriteLine(str.Substring(str.IndexOf("@else@") + 6));
                                 DoLine(str.Substring(str.IndexOf("@else@") + 6), reverse);
                             }
                         }
@@ -378,14 +424,24 @@ namespace D2LibraryManager
                     }
                     else if (args[0] == "copy")
                     {
+                        WriteToLog("Copy " + FormPath(args[1]) + " to " + FormPath(args[2]));
                         Directory.CreateDirectory(Path.GetDirectoryName(FormPath(args[2])));
                         File.Copy(FormPath(args[1]), FormPath(args[2]), false);
                     }
                 }
             }
-            catch
+            catch (IOException e)
             {
-                MessageBox.Show("Install error:" + Environment.NewLine + str);
+                if (reverse)
+                {
+                    WriteToLog("Uninstall error: " + e);
+                    MessageBox.Show("Uninstall error:" + Environment.NewLine + str + Environment.NewLine + e);
+                }
+                else
+                {
+                    WriteToLog("Install error: " + e);
+                    MessageBox.Show("Install error:" + Environment.NewLine + str + Environment.NewLine + e);
+                }
             }
         }
 
