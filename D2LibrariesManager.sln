@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.31105.61
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "D2LibrariesManager", "D2LibraryManager\D2LibrariesManager.csproj", "{0731E943-355A-4009-B501-A0067B63FD17}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "D2LibrariesManager", "D2LibrariesManager\D2LibrariesManager.csproj", "{0731E943-355A-4009-B501-A0067B63FD17}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
