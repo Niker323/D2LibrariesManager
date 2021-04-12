@@ -44,9 +44,13 @@ namespace D2LibrariesManager
 
         TreeNode memNode;
 
+        void DisWeb(object sender, WebBrowserDocumentCompletedEventArgs e) => webBrowser1.AllowNavigation = false;
+
         public Form1()
         {
             InitializeComponent();
+
+            webBrowser1.DocumentCompleted += DisWeb;
 
             Ping p = new Ping();
             PingReply pr = p.Send(@"github.com");
@@ -230,7 +234,9 @@ namespace D2LibrariesManager
             string ready_discr = discr_blank.Replace("{name}", selectedLibData.name);
             ready_discr = ready_discr.Replace("{source}", selectedLibData.source);
             ready_discr = ready_discr.Replace("{description}", selectedLibData.description);
+            webBrowser1.AllowNavigation = true;
             webBrowser1.DocumentText = ready_discr;
+            //webBrowser1.AllowNavigation = false;
             menuStrip1.Items.Clear();
             if (selectedLibData.install != null)
             {
